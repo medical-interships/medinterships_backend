@@ -1,13 +1,10 @@
-import dotenv from "dotenv";
-dotenv.config();
-
-export default {
-  port: process.env.PORT || 3000,
+module.exports = {
+  port: 3000,
   db: {
-    host: process.env.DB_HOST,
-    name: process.env.DB_NAME,
-    user: process.env.DB_USER,
-    pass: process.env.DB_PASS,
+    host: "127.0.0.1",
+    name: "internship_db",
+    user: "root",
+    pass: "",
   },
-  jwtSecret: process.env.JWT_SECRET,
+  jwtSecret: "supersecret123",
 };
