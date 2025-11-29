@@ -3,124 +3,179 @@ const { User, Doctor, Student, Evaluation, Application, Internship, Department, 
 
 exports.getDashboard = async (req, res) => {
   try {
-    // Find the doctor linked to the logged-in user
     const doctor = await User.findOne({
       where: { id: req.user.id },
       include: [
         { model: Department, as: "department" },
-        { model: Establishment, as: "establishment" },
-      ],
+        { model: Establishment, as: "establishment" }
+      ]
     });
 
     if (!doctor) {
-      return res.status(404).render("error", {
-        error: "Profil médecin non trouvé",
-        user: req.user,
+      return res.status(404).json({
+        success: false,
+        error: "Profil médecin non trouvé"
       });
     }
 
-    // Get students (all students supervised by this doctor via evaluations or internships)
-    const supervisedStudents = await Student.findAll({
+    // Students supervised by this doctor
+    const supervisedStudents = await User.findAll({
+      where: { role: "student" },
       include: [
         {
           model: Evaluation,
+          as: "evaluationsReceived",
           where: { doctorId: doctor.id },
-          required: false, // include even if no evaluations yet
-        },
-      ],
+          required: false
+        }
+      ]
     });
 
-    // Get pending evaluations (draft)
+    // Pending evaluations
     const pendingEvaluations = await Evaluation.findAll({
-      where: { doctorId: doctor.id, status: "En attente" },
-      include: [Student, Internship],
-      limit: 5,
+      where: {
+        doctorId: doctor.id,
+        status: "En attente"
+      },
+      include: [
+        { model: User, as: "student" },
+        { model: User, as: "doctor" },
+        { model: Internship, as: "internship" }
+      ],
+      limit: 5
     });
 
-    // Get submitted evaluations
+    // Completed evaluations
     const completedEvaluations = await Evaluation.findAll({
-      where: { doctorId: doctor.id, status: "Soumise" },
-      include: [Student, Internship],
+      where: {
+        doctorId: doctor.id,
+        status: "Soumise"
+      },
+      include: [
+        { model: User, as: "student" },
+        { model: User, as: "doctor" },
+        { model: Internship, as: "internship" }
+      ]
     });
 
-    res.render("doctor/dashboard", {
-      doctor,
-      supervisedStudents,
-      pendingEvaluations,
-      completedEvaluations,
-      title: "Tableau de Bord Médecin Superviseur",
+    res.status(200).json({
+      status: "success",
+      data: {
+        doctor,
+        supervisedStudents,
+        pendingEvaluations,
+        completedEvaluations,
+        title: "Tableau de Bord Médecin Superviseur"
+      }
     });
+
   } catch (error) {
-    console.error("Doctor dashboard error:", error);
-    res.status(500).render("error", {
-      error: "Erreur lors du chargement du tableau de bord",
-      user: req.user,
-    });
+    console.error("doctor dashboard error:", error);
+    res.status(500).json({ success: false, error: error.message });
   }
 };
-
 exports.getStudents = async (req, res) => {
   try {
     const doctor = await User.findOne({ where: { id: req.user.id } });
 
-    // Find internships supervised by this doctor
+    if (!doctor) {
+      return res.status(404).json({
+        success: false,
+        error: "Doctor profile not found",
+      });
+    }
+
+    // 1. Find internships supervised by the doctor
     const internships = await Internship.findAll({
-      where: { departmentId: doctor.departmentId, establishmentId: doctor.establishmentId },
+      where: {
+        departmentId: doctor.departmentId,
+        establishmentId: doctor.establishmentId,
+      },
     });
 
     const internshipIds = internships.map(i => i.id);
 
-    // Get accepted applications for these internships
+    if (internshipIds.length === 0) {
+      return res.status(200).json({
+        success: true,
+        data: [],
+        message: "No internships found for this doctor",
+      });
+    }
+
+    // 2. Get accepted applications with correct includes
     const applications = await Application.findAll({
-      where: { internshipId: { [Op.in]: internshipIds }, status: "Acceptée" },
-      include: [Student, Internship],
+      where: {
+        internshipId: { [Op.in]: internshipIds },
+        status: "Acceptée",
+      },
+      include: [
+        { model: User, as: "student" },        // Correct association
+        { model: Internship, as: "internship" } // FIXED alias
+      ],
       order: [["appliedDate", "DESC"]],
     });
 
-    res.render("doctor/students", {
-      students: applications.map(app => ({
-        student: app.Student,
-        internship: app.Internship,
-        application: app,
-      })),
+    // 3. Build JSON response
+    const students = applications.map(app => ({
+      student: app.student,       // FIX: lowercase because alias is "student"
+      internship: app.internship, // FIX: matches alias "internship"
+      application: app,
+    }));
+
+    return res.status(200).json({
+      success: true,
+      data: students,
       title: "Étudiants Supervisés",
     });
+
   } catch (error) {
     console.error("Students error:", error);
-    res.status(500).render("error", {
-      error: "Erreur lors du chargement des étudiants",
-      user: req.user,
+    return res.status(500).json({
+      success: false,
+      error: error.message,
     });
   }
 };
 
+
 exports.getStudentDetails = async (req, res) => {
   try {
-    const student = await Student.findByPk(req.params.id);
+    // Find the student by ID
+    const student = await User.findByPk(req.params.id);
 
-    if (!student) {
-      return res.status(404).render("error", {
-        error: "Étudiant non trouvé",
-        user: req.user,
+    if (!student || student.role !== "student") {
+      return res.status(404).json({
+        success: false,
+        message: "Étudiant non trouvé",
       });
     }
 
-    // Current accepted internship
+    // Find the current accepted internship for this student
     const application = await Application.findOne({
       where: { studentId: student.id, status: "Acceptée" },
-      include: [Internship],
+      include: [
+        {
+          model: Internship,
+          as: "internship",  // <-- use the correct alias
+        },
+      ],
     });
 
-    res.render("doctor/student-details", {
-      student,
-      internship: application ? application.Internship : null,
+    res.status(200).json({
+      success: true,
+      data: {
+        student,
+        internship: application ? application.internship : null,
+      },
       title: `Profil de ${student.firstName} ${student.lastName}`,
     });
   } catch (error) {
     console.error("Student details error:", error);
-    res.status(500).render("error", {
-      error: "Erreur lors du chargement du profil étudiant",
-      user: req.user,
+    res.status(500).json({
+      success: false,
+      message: "Erreur lors du chargement du profil étudiant",
+      error: error.message,
     });
   }
 };
@@ -135,94 +190,118 @@ exports.getEvaluations = async (req, res) => {
 
     const evaluations = await Evaluation.findAll({
       where: filter,
-      include: [Student, Internship],
+      include: [
+        { model: User, as: "student" },       // Use the alias defined in your association
+        { model: Internship, as: "internship" } // Correct alias
+      ],
       order: [["submissionDate", "DESC"]],
     });
 
-    res.render("doctor/evaluations", {
-      evaluations,
+    res.status(200).json({
+      success: true,
+      data: evaluations,
       filters: { status },
       title: "Mes Évaluations",
     });
   } catch (error) {
     console.error("Evaluations error:", error);
-    res.status(500).render("error", {
-      error: "Erreur lors du chargement des évaluations",
-      user: req.user,
+    res.status(500).json({
+      success: false,
+      message: "Erreur lors du chargement des évaluations",
+      error: error.message,
     });
   }
 };
+
+// Controller: doctorController.js
 
 exports.createEvaluation = async (req, res) => {
   try {
-    const doctor = await User.findOne({ where: { id: req.user.id } });
-    const { applicationId } = req.params;
-
-    const application = await Application.findByPk(applicationId, {
-      include: [Student, Internship],
+  const doctor = await User.findByPk(req.user.id);
+  
+ 
+  const { applicationId } = req.params;
+  
+  // Include correct aliases: Student and Internship
+  const application = await Application.findByPk(applicationId, {
+    include: [
+      { model: User, as: "student" },
+      { model: Internship, as: "internship" },
+    ],
+  });
+  
+  if (!application || application.status !== "acceptee") {
+    return res.status(404).json({
+      success: false,
+      error: "Candidature non trouvée ou non acceptée",
     });
-
-    if (!application || application.status !== "Acceptée") {
-      return res.status(404).render("error", {
-        error: "Candidature non trouvée ou non acceptée",
-        user: req.user,
-      });
-    }
-
-    // Check if evaluation already exists
-    let evaluation = await Evaluation.findOne({
-      where: { studentId: application.studentId, internshipId: application.internshipId, doctorId: doctor.id },
+  }
+  
+  // Check if evaluation already exists
+  let evaluation = await Evaluation.findOne({
+    where: {
+      studentId: application.studentId,
+      internshipId: application.internshipId,
+      doctorId: doctor.id,
+    },
+  });
+  
+  if (!evaluation) {
+    evaluation = await Evaluation.create({
+      studentId: application.studentId,
+      internshipId: application.internshipId,
+      doctorId: doctor.id,
+      status: "en_attente",
     });
-
-    if (!evaluation) {
-      evaluation = await Evaluation.create({
-        studentId: application.studentId,
-        internshipId: application.internshipId,
-        doctorId: doctor.id,
-        status: "En attente",
-      });
-    }
-
-    res.render("doctor/evaluation-form", {
+  }
+  
+  res.json({
+    success: true,
+    data: {
       evaluation,
-      student: application.Student,
-      internship: application.Internship,
-      title: "Évaluation de Stage",
-    });
-  } catch (error) {
-    console.error("Create evaluation error:", error);
-    res.status(500).render("error", {
-      error: "Erreur lors de la création de l'évaluation",
-      user: req.user,
-    });
-  }
-};
+      student: application.student,
+      internship: application.internship,
+    },
+    message: "Évaluation créée avec succès",
+  });
 
-exports.submitEvaluation = async (req, res) => {
+  
+  } catch (error) {
+  console.error("Create evaluation error:", error);
+  res.status(500).json({ success: false, error: error.message });
+  }
+  };
+  
+  exports.submitEvaluation = async (req, res) => {
   try {
-    const doctor = await User.findOne({ where: { id: req.user.id } });
-    const { id } = req.params;
-    const { attendance, practicalSkills, professionalBehavior, doctorComments } = req.body;
-
-    const evaluation = await Evaluation.findOne({
-      where: { id, doctorId: doctor.id },
-    });
-
-    if (!evaluation) {
-      return res.status(404).json({ success: false, error: "Évaluation non trouvée" });
-    }
-
-    evaluation.attendance = parseFloat(attendance);
-    evaluation.practicalSkills = parseFloat(practicalSkills);
-    evaluation.professionalBehavior = parseFloat(professionalBehavior);
-    evaluation.comments = doctorComments;
-    evaluation.status = "Soumise";
-
-    await evaluation.save();
-
-    res.json({ success: true, message: "Évaluation soumise avec succès" });
-  } catch (error) {
-    console.error("Submit evaluation error:", error);
-    res.status(500).json({ success: false, error: "Erreur lors de la soumission de l'évaluation" });
+  const doctor = await User.findByPk(req.user.id);
+  const { id } = req.params;
+  const { attendance, practicalSkills, professionalBehavior, doctorComments } = req.body;
+  
+ 
+  const evaluation = await Evaluation.findOne({
+    where: { id, doctorId: doctor.id },
+  });
+  
+  if (!evaluation) {
+    return res.status(404).json({ success: false, error: "Évaluation non trouvée" });
   }
-};
+  
+evaluation.attendance = parseFloat(attendance);
+evaluation.practicalSkills = parseFloat(practicalSkills);
+evaluation.professionalBehavior = parseFloat(professionalBehavior);
+evaluation.comments = doctorComments;
+evaluation.status = "soumise";
+evaluation.submissionDate = new Date();
+evaluation.score = (evaluation.attendance + evaluation.practicalSkills + evaluation.professionalBehavior) / 3;
+
+await evaluation.save();
+  res.json({ success: true, message: "Évaluation soumise avec succès" });
+ 
+  
+  } catch (error) {
+  console.error("Submit evaluation error:", error);
+  res.status(500).json({ success: false, error: error.message });
+  }
+  };
+  

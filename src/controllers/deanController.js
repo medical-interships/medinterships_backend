@@ -3,7 +3,7 @@ const { Op, fn, col, literal } = require('sequelize');
 
 exports.getDashboard = async (req, res) => {
   try {
-    // Get dean profile
+    // Get admin  profile
     const dean = await Dean.findOne({ where: { userId: req.user.id }, include: { model: User, as: "user" } });
 
     if (!dean) {

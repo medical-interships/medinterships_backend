@@ -1,4 +1,4 @@
-const { Service } = require('../models/models');
+const { Department } = require('../models/models');
 
 // ✅ Get public services list
 exports.getPublicServices = async (req, res) => {
@@ -9,7 +9,7 @@ exports.getPublicServices = async (req, res) => {
 
     res.status(200).json({
       status: 'success',
-      data: { services }
+      data: { Department }
     });
 
   } catch (error) {
