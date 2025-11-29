@@ -310,13 +310,13 @@ exports.createService = async (req, res) => {
 // Statistics & Reports
 exports.getStatistics = async (req, res) => {
   try {
-    const byLevel = await Student.findAll({
+    const byLevel = await User.findAll( {where : {role : "student"}} , {
       attributes: ['level', [fn('COUNT', col('id')), 'count']],
       group: ['level']
     });
 
     const withInternship = await Application.count({ where: { status: 'accepted' } });
-    const withoutInternship = await Student.count() - withInternship;
+    const withoutInternship = await User.count({where: {role: "student"}}) - withInternship;
 
     // Establishment statistics
     const establishmentStats = await Establishment.findAll({
@@ -327,7 +327,7 @@ exports.getStatistics = async (req, res) => {
     });
 
     // Service statistics
-    const serviceStats = await Service.findAll({
+    const serviceStats = await Department.findAll({
       include: [{
         model: Internship,
         attributes: ['id'],
@@ -347,14 +347,17 @@ exports.getStatistics = async (req, res) => {
       group: ['year', 'month'],
       order: [['year', 'ASC'], ['month', 'ASC']]
     });
-
-    res.render('dean/statistics', {
-      studentStats: { byLevel, withInternship, withoutInternship },
-      establishmentStats,
-      serviceStats,
-      monthlyTrends: internships,
-      title: 'Statistiques et Rapports'
+    res.status(201).json({
+      status: "success",
+      message: "you cooking",
+      data: { 
+        withInternship,
+        withoutInternship,
+        internships,
+        serviceStats
+      }
     });
+    
   } catch (error) {
     console.error('Statistics error:', error);
     res.status(500).render('error', { error: 'Erreur lors du chargement des statistiques', user: req.user });
@@ -363,11 +366,11 @@ exports.getStatistics = async (req, res) => {
 
 exports.exportReport = async (req, res) => {
   try {
-    const totalStudents = await Student.count();
+    const totalStudents = await User.count({ where: { role: "student" } });
     const totalInternships = await Internship.count();
     const placementRate = totalStudents > 0 ? ((await Application.count({ where: { status: 'accepted' } }) / totalStudents) * 100).toFixed(1) : 0;
     const activeEstablishments = await Establishment.count({ where: { isActive: true } });
-    const activeServices = await Service.count({ where: { isActive: true } });
+    const activeServices = await Establishment.count({ where: { isActive: true } });
 
     res.json({
       success: true,
@@ -375,8 +378,11 @@ exports.exportReport = async (req, res) => {
       message: 'Rapport généré avec succès'
     });
   } catch (error) {
-    console.error('Export report error:', error);
-    res.status(500).json({ success: false, error: 'Erreur lors de la génération du rapport' });
+    console.error('Create establishment error:', error); // <-- log full error
+    res.status(500).json({
+      success: false,
+      error: error.message // <-- send full error message in response
+    });
   }
 };
 
