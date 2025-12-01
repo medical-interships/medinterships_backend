@@ -4,7 +4,7 @@ module.exports = {
     host: "127.0.0.1",
     name: "internship_db",
     user: "root",
-    pass: "",
+    pass: "Itachi12",
   },
   jwtSecret: "supersecret123",
 };

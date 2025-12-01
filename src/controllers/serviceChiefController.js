@@ -1,107 +1,129 @@
 const { Op } = require("sequelize");
-const { User, Department, Internship, Application, Evaluation, Establishment, Student } = require("../models/models");
+const { User, Department, Internship, Application, Evaluation, Establishment } = require("../models/models");
 
 exports.getDashboard = async (req, res) => {
   try {
-    const chief = await User.findOne({
-      where: { id: req.user.id },
-      include: [
-        { model: Department, as: "department" },
-        { model: Establishment, as: "establishment" },
-      ],
-    });
-
-    if (!chief) {
-      return res.status(404).render("error", {
-        error: "Profil chef de service non trouvé",
-        user: req.user,
-      });
-    }
-
-    // Get internships supervised by this chief
-    const internships = await Internship.findAll({
-      where: { departmentId: chief.departmentId, establishmentId: chief.establishmentId },
-    });
-
-    const internshipIds = internships.map(i => i.id);
-
-    // Statistics
-    const stats = {
-      pendingApplications: await Application.count({
-        where: { internshipId: { [Op.in]: internshipIds }, status: "En attente" },
-      }),
-      activeInternships: await Internship.count({
-        where: { id: { [Op.in]: internshipIds }, status: "Actif" },
-      }),
-      pendingEvaluations: await Evaluation.count({
-        where: { internshipId: { [Op.in]: internshipIds }, status: "Soumise" },
-      }),
-      totalStudents: await Application.count({
-        where: { internshipId: { [Op.in]: internshipIds }, status: "Acceptée" },
-      }),
-    };
-
-    // Urgent applications (pending > 7 days)
-    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-    const urgentApplications = await Application.findAll({
-      where: { internshipId: { [Op.in]: internshipIds }, status: "En attente", appliedDate: { [Op.lte]: sevenDaysAgo } },
-      include: [Student, Internship],
-      limit: 5,
-      order: [["appliedDate", "ASC"]],
-    });
-
-    // Active internships with details
-    const activeInternships = await Internship.findAll({
-      where: { id: { [Op.in]: internshipIds }, status: "Actif" },
-      include: [{ model: Department }, { model: Establishment }],
-    });
-
-    // Pending evaluations
-    const pendingEvaluations = await Evaluation.findAll({
-      where: { internshipId: { [Op.in]: internshipIds }, status: "Soumise" },
-      include: [Student, Internship, { model: User, as: "doctor" }],
-      limit: 5,
-      order: [["submissionDate", "DESC"]],
-    });
-
-    res.render("service-chief/dashboard", {
-      chief,
-      stats,
-      urgentApplications,
-      activeInternships,
-      pendingEvaluations,
-      title: "Tableau de Bord Chef de Service",
-    });
-  } catch (error) {
-    console.error("Chief dashboard error:", error);
-    res.status(500).render("error", {
-      error: "Erreur lors du chargement du tableau de bord",
-      user: req.user,
-    });
+  const chief = await User.findOne({
+  where: { id: req.user.id },
+  include: [
+  { model: Department, as: "department" },
+  { model: Establishment, as: "establishment" },
+  ],
+  });
+  
+  if (!chief) {
+    return res.status(404).json({ error: "Profil chef de service non trouvé", user: req.user });
   }
-};
+  
+  const internships = await Internship.findAll({
+    where: {
+      departmentId: chief.departmentId,
+      establishmentId: chief.establishmentId,
+    },
+  });
+  
+  const internshipIds = internships.map(i => i.id);
+  
+  const stats = {
+    pendingApplications: await Application.count({
+      where: { internshipId: { [Op.in]: internshipIds }, status: "en_attente" },
+    }),
+    activeInternships: await Internship.count({
+      where: { id: { [Op.in]: internshipIds }, status: "actif" },
+    }),
+    pendingEvaluations: await Evaluation.count({
+      where: { internshipId: { [Op.in]: internshipIds }, status: "soumise" },
+    }),
+    totalStudents: await Application.count({
+      where: { internshipId: { [Op.in]: internshipIds }, status: "acceptee" },
+    }),
+  };
+  
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const urgentApplications = await Application.findAll({
+    where: {
+      internshipId: { [Op.in]: internshipIds },
+      status: "en_attente",
+      appliedDate: { [Op.lte]: sevenDaysAgo },
+    },
+    include: [
+      { model: User, as: "student" },
+      { model: Internship, as: "internship" }
+    ],
+    limit: 5,
+    order: [["appliedDate", "ASC"]],
+  });
+  
+  const activeInternships = await Internship.findAll({
+    where: { id: { [Op.in]: internshipIds }, status: "actif" },
+    include: [
+      { model: Department, as: "department" },
+      { model: Establishment, as: "establishment" }
+    ]
+  });
+  
+  const pendingEvaluations = await Evaluation.findAll({
+    where: { internshipId: { [Op.in]: internshipIds }, status: "soumise" },
+    include: [
+      { model: User, as: "student" },
+      { model: Internship, as: "internship" },
+      { model: User, as: "doctor" }
+    ],
+    limit: 5,
+    order: [["submissionDate", "DESC"]],
+  });
+  
+  return res.json({
+    chief,
+    stats,
+    urgentApplications,
+    activeInternships,
+    pendingEvaluations,
+    title: "Tableau de Bord Chef de Service",
+  });
+  
+  } catch (error) {
+  console.error("Chief dashboard error:", error);
+  return res.status(500).json({
+  error: "Erreur lors du chargement du tableau de bord",
+  user: req.user,
+  });
+  }
+  };
 
-exports.getInternships = async (req, res) => {
-  try {
+  exports.getInternships = async (req, res) => {
+    try {
     const chief = await User.findOne({ where: { id: req.user.id } });
+    if (!chief) return res.status(404).json({ error: "Chef de service non trouvé" });
+    
     const internships = await Internship.findAll({
-      where: { departmentId: chief.departmentId, establishmentId: chief.establishmentId },
-      include: [{ model: Department }, { model: Establishment }],
-      order: [["createdAt", "DESC"]],
+      where: {
+        departmentId: chief.departmentId,
+        establishmentId: chief.establishmentId,
+      },
+      include: [
+        { model: Department, as: "department" }, // use alias
+        { model: Establishment, as: "establishment" }, // use alias
+        { model: User, as: "creator" } // include the creator if needed
+      ],
+      order: [["startDate", "DESC"]],
     });
-
-    res.render("service-chief/internships", {
+    
+    return res.json({
+      success: true,
       internships,
-      title: "Gestion des Stages",
+      title: "Stages du Chef de Service",
     });
-  } catch (error) {
-    console.error("Internships error:", error);
-    res.status(500).render("error", {
-      error: "Erreur lors du chargement des stages",
-      user: req.user,
+    
+    } catch (error) {
+    console.error("getInternships error:", error);
+    return res.status(500).json({
+    success: false,
+    error: "Erreur lors du chargement des stages",
+    user: req.user,
     });
-  }
-};
+    }
+    };
 
 exports.createInternship = async (req, res) => {
   try {
@@ -127,162 +149,247 @@ exports.createInternship = async (req, res) => {
 
 exports.storeInternship = async (req, res) => {
   try {
-    const chief = await User.findOne({ where: { id: req.user.id } });
-    const { title, description, departmentId, establishmentId, duration, startDate, endDate, totalPlaces, requirements } = req.body;
-
-    await Internship.create({
-      title,
-      description,
-      departmentId,
-      establishmentId,
-      chiefId: chief.id,
-      duration,
-      startDate,
-      endDate,
-      totalPlaces: parseInt(totalPlaces),
-      filledPlaces: 0,
-      requirements: requirements ? JSON.stringify(requirements.split(",").map(r => r.trim())) : null,
-      status: "Actif",
-    });
-
-    res.redirect("/service-chief/internships");
-  } catch (error) {
-    console.error("Store internship error:", error);
-    res.status(500).render("error", {
-      error: "Erreur lors de la création du stage",
-      user: req.user,
-    });
+  // Get the logged-in service chief
+  const chief = await User.findOne({ where: { id: req.user.id } });
+  if (!chief) {
+  return res.status(404).json({ error: "Chef de service non trouvé" });
   }
-};
-
-exports.getApplications = async (req, res) => {
-  try {
-    const chief = await User.findOne({ where: { id: req.user.id } });
-    const { status, internshipId } = req.query;
-
-    const internships = await Internship.findAll({ where: { chiefId: chief.id } });
-    const internshipIds = internships.map(i => i.id);
-
-    const filter = { internshipId: { [Op.in]: internshipIds } };
-    if (status) filter.status = status;
-    if (internshipId) filter.internshipId = internshipId;
-
-    const applications = await Application.findAll({
-      where: filter,
-      include: [Student, Internship, { model: User, as: "processedBy" }],
-      order: [["appliedDate", "DESC"]],
-    });
-
-    const stats = {
-      pending: await Application.count({ where: { ...filter, status: "En attente" } }),
-      accepted: await Application.count({ where: { ...filter, status: "Acceptée" } }),
-      rejected: await Application.count({ where: { ...filter, status: "Refusée" } }),
-    };
-
-    res.render("service-chief/applications", {
-      applications,
-      stats,
-      filters: { status, internshipId },
-      title: "Gestion des Candidatures",
-    });
+  
+  const {
+    title,
+    description,
+    departmentId,
+    establishmentId,
+    duration,
+    startDate,
+    endDate,
+    totalPlaces,
+    requirements
+  } = req.body;
+  
+  const newInternship = await Internship.create({
+    title,
+    description,
+    departmentId,
+    establishmentId,
+    chiefId: chief.id,
+    createdBy: chief.id,   // <-- add this line
+    duration,
+    startDate,
+    endDate,
+    totalPlaces: parseInt(totalPlaces),
+    filledPlaces: 0,
+    requirements: requirements
+      ? JSON.stringify(requirements.split(",").map(r => r.trim()))
+      : null,
+    status: "actif",
+  });
+  
+  
+  return res.json({
+    success: true,
+    message: "Stage créé avec succès",
+    internship: newInternship,
+  });
+  
   } catch (error) {
-    console.error("Applications error:", error);
-    res.status(500).render("error", {
-      error: "Erreur lors du chargement des candidatures",
-      user: req.user,
-    });
+    console.error("Submit evaluation error:", error);
+    res.status(500).json({ success: false, error: error.message });
   }
-};
+  };
+  exports.getApplications = async (req, res) => {
+    try {
+      const chief = await User.findOne({ where: { id: req.user.id } });
+      if (!chief) {
+        return res.status(404).json({ success: false, error: "Chef de service non trouvé" });
+      }
+  
+      const { status, internshipId } = req.query;
+  
+      const internships = await Internship.findAll({ where: { createdBy: chief.id } });
+      const internshipIds = internships.map(i => i.id);
+  
+      const filter = { internshipId: { [Op.in]: internshipIds } };
+      if (status) filter.status = status.toLowerCase();
+      if (internshipId) filter.internshipId = internshipId;
+  
+      const applications = await Application.findAll({
+        where: filter,
+        include: [
+          { model: User, as: "student" },
+          { model: Internship, as: "internship" }
+        ],
+        order: [["appliedDate", "DESC"]],
+      });
+  
+      // Attach the chief as reviewer for all applications
+      const applicationsWithReviewer = applications.map(app => {
+        return {
+          ...app.toJSON(),
+          reviewer: {
+            id: chief.id,
+            firstName: chief.firstName,
+            lastName: chief.lastName,
+            email: chief.email,
+            role: chief.role
+          }
+        };
+      });
+  
+      const stats = {
+        pending: await Application.count({ where: { ...filter, status: "en_attente" } }),
+        accepted: await Application.count({ where: { ...filter, status: "acceptee" } }),
+        rejected: await Application.count({ where: { ...filter, status: "refusee" } }),
+      };
+  
+      return res.json({
+        success: true,
+        applications: applicationsWithReviewer,
+        stats,
+        filters: { status, internshipId },
+        title: "Gestion des Candidatures",
+      });
+  
+    } catch (error) {
+      console.error("Applications error:", error);
+      return res.status(500).json({ success: false, error: error.message });
+    }
+  };
 
-exports.updateApplicationStatus = async (req, res) => {
-  try {
+  exports.updateApplicationStatus = async (req, res) => {
+    try {
     const { id } = req.params;
     const { status, rejectionReason } = req.body;
+    
+  
     const chief = await User.findOne({ where: { id: req.user.id } });
-
+    if (!chief) {
+      return res.status(404).json({ success: false, error: "Chef de service non trouvé" });
+    }
+    
+    // Ensure the application belongs to an internship created by this chief
     const application = await Application.findOne({
       where: { id },
-      include: [{ model: Internship, where: { chiefId: chief.id } }],
+      include: [
+        {
+          model: Internship,
+          as: "internship", // ✅ specify the alias
+          where: { createdBy: chief.id },
+        },
+      ],
     });
-
-    if (!application) {
-      return res.status(404).json({ success: false, error: "Candidature non trouvée" });
+    if (1==1){
+      console.log(id);
+      console.log(application);
     }
-
+    
+    if (!application) {
+      return res.status(404).json({ success: false, error: "Candidature non trouvée ou pas supervisée par ce chef" });
+    }
+    
+    // Update status
     application.status = status;
-    application.processedById = chief.id;
-    if (status === "Refusée" && rejectionReason) application.rejectionReason = rejectionReason;
-
+    if (status.toLowerCase() === "refusee" && rejectionReason) {
+      application.rejectionReason = rejectionReason;
+    }
+    
     await application.save();
-
-    // Update filledPlaces if accepted
-    if (status === "Acceptée") {
+    
+    // If accepted → increment filled places
+    if (status.toLowerCase() === "acceptee") {
       const internship = await Internship.findByPk(application.internshipId);
       internship.filledPlaces += 1;
       await internship.save();
     }
-
-    res.json({ success: true, message: "Statut mis à jour avec succès" });
-  } catch (error) {
+    
+    // Attach reviewer info in memory (not in DB)
+    application.dataValues.reviewer = chief;
+    
+    return res.json({
+      success: true,
+      message: "Statut mis à jour avec succès",
+      application,
+    });
+    
+    
+    } catch (error) {
     console.error("Update application status error:", error);
-    res.status(500).json({ success: false, error: "Erreur lors de la mise à jour" });
-  }
-};
+    return res.status(500).json({ success: false, error: "Erreur lors de la mise à jour" });
+    }
+    };
+    
 
 exports.getEvaluations = async (req, res) => {
   try {
     const chief = await User.findOne({ where: { id: req.user.id } });
     const { status } = req.query;
 
-    const internships = await Internship.findAll({ where: { chiefId: chief.id } });
+    // Internships supervised by this chief
+    const internships = await Internship.findAll({
+      where: { createdBy: chief.id },
+    });
     const internshipIds = internships.map(i => i.id);
 
+    // Filters
     const filter = { internshipId: { [Op.in]: internshipIds } };
     if (status) filter.status = status;
 
+    // Fetch evaluations
     const evaluations = await Evaluation.findAll({
       where: filter,
-      include: [Student, Internship, { model: User, as: "doctor" }],
+      include: [
+        { model: User, as: "student" },
+        { model: Internship, as: "internship" }, // use the alias
+        { model: User, as: "doctor" }
+      ],
       order: [["submissionDate", "DESC"]],
     });
+    
+    
 
-    res.render("service-chief/evaluations", {
+    return res.json({
       evaluations,
       filters: { status },
-      title: "Évaluations des Stages",
+      title: "Évaluations des Stages"
     });
+
   } catch (error) {
-    console.error("Evaluations error:", error);
-    res.status(500).render("error", {
-      error: "Erreur lors du chargement des évaluations",
-      user: req.user,
-    });
+    console.error("Submit evaluation error:", error);
+  res.status(500).json({ success: false, error: error.message });
+ 
   }
 };
+
 
 exports.validateEvaluation = async (req, res) => {
   try {
     const { id } = req.params;
     const { chiefComments } = req.body;
-    const chief = await User.findOne({ where: { id: req.user.id } });
 
-    const evaluation = await Evaluation.findOne({
-      where: { id, status: "Soumise" },
-      include: [{ model: Internship, where: { chiefId: chief.id } }],
-    });
+    // Find the evaluation that is "soumise"
+    const evaluation = await Evaluation.findOne({ where: { id, status: "soumise" } });
 
     if (!evaluation) {
       return res.status(404).json({ success: false, error: "Évaluation non trouvée" });
     }
 
-    evaluation.chiefValidation = true;
-    evaluation.chiefComments = chiefComments;
-    evaluation.status = "Clôturée";
+    // Update status in DB
+    evaluation.status = "soumise"; // or another allowed value
+
     await evaluation.save();
 
-    res.json({ success: true, message: "Évaluation validée avec succès" });
+    // Attach chief info/comments in memory only
+    evaluation.dataValues.chiefComments = chiefComments;
+    evaluation.dataValues.chiefValidation = true;
+
+    return res.json({
+      success: true,
+      message: "Évaluation validée avec succès",
+      evaluation
+    });
+
   } catch (error) {
-    console.error("Validate evaluation error:", error);
-    res.status(500).json({ success: false, error: "Erreur lors de la validation" });
+    console.error("Submit evaluation error:", error);
+    res.status(500).json({ success: false, error: error.message });
   }
 };
