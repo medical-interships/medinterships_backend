@@ -291,7 +291,7 @@ evaluation.attendance = parseFloat(attendance);
 evaluation.practicalSkills = parseFloat(practicalSkills);
 evaluation.professionalBehavior = parseFloat(professionalBehavior);
 evaluation.comments = doctorComments;
-evaluation.status = "soumise";
+evaluation.status = null;;
 evaluation.submissionDate = new Date();
 evaluation.score = (evaluation.attendance + evaluation.practicalSkills + evaluation.professionalBehavior) / 3;
 

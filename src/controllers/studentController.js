@@ -2,49 +2,82 @@ const { Op } = require("sequelize");
 const { User, Student, Internship, Application, Evaluation, Department, Establishment, Doctor, ServiceChief, Document } = require("../models/models");
 
 // Helper to get student by user ID
-const getStudentByUserId = async (userId) => {
-  return await Student.findOne({ where: { userId } });
+const getStudentByUserId = async (id) => {
+  return await User.findOne({ where: { id } });
 };
 
 // Dashboard
 exports.getDashboard = async (req, res) => {
   try {
-    if (req.user.role === 'admin') {
-      return res.status(200).json({
-        status: "success",
-        message: "Admin access OK (no student dashboard available)."
-      });
-    }
-    const student = await getStudentByUserId(req.user.id);
-    if (!student) return res.status(404).json({ status: "error", message: "Profil étudiant non trouvé" });
+    // 1. Get the student user
+    const student = await User.findByPk(req.user.id, {
+      include: [
+        { model: Establishment, as: "establishment" },
+        { model: Department, as: "department" }
+      ]
+    });
 
+    if (!student)
+      return res.status(404).json({ status: "error", message: "Profil étudiant non trouvé" });
+
+    // 2. Get last 5 applications
     const applications = await Application.findAll({
       where: { studentId: student.id },
-      include: [Internship],
+      include: [
+        { model: Internship, as: "internship" }
+      ],
       order: [["appliedDate", "DESC"]],
       limit: 5
     });
 
+    // 3. Application statistics
     const stats = {
-      pending: await Application.count({ where: { studentId: student.id, status: "pending" } }),
-      accepted: await Application.count({ where: { studentId: student.id, status: "accepted" } }),
-      rejected: await Application.count({ where: { studentId: student.id, status: "rejected" } }),
-      total: await Application.count({ where: { studentId: student.id } })
+      pending: await Application.count({
+        where: { studentId: student.id, status: "en_attente" }
+      }),
+      accepted: await Application.count({
+        where: { studentId: student.id, status: "acceptee" }
+      }),
+      rejected: await Application.count({
+        where: { studentId: student.id, status: "refusee" }
+      }),
+      total: await Application.count({
+        where: { studentId: student.id }
+      })
     };
 
+    // 4. Recommended internships
     const recommendedInternships = await Internship.findAll({
-      where: { isActive: true, isPublished: true, startDate: { [Op.gte]: new Date() } },
-      include: [Department, Establishment, ServiceChief],
+      where: {
+        status: "actif",
+        startDate: { [Op.gte]: new Date() }
+      },
+      include: [
+        { model: Department, as: "department" },
+        { model: Establishment, as: "establishment" },
+        { model: User, as: "creator" }
+      ],
       limit: 3,
       order: [["startDate", "ASC"]]
     });
 
-    res.status(200).json({ status: "success", data: { student, applications, stats, recommendedInternships } });
+    // 5. Final response
+    res.status(200).json({
+      status: "success",
+      data: {
+        student,
+        applications,
+        stats,
+        recommendedInternships
+      }
+    });
+
   } catch (error) {
-    console.error("Dashboard error:", error);
-    res.status(500).json({ status: "error", message: "Erreur lors du chargement du tableau de bord" });
+    console.error("student dashboard error:", error);
+    res.status(500).json({ success: false, error: error.message });
   }
 };
+
 
 // Get Profile
 exports.getProfile = async (req, res) => {
@@ -60,31 +93,50 @@ exports.getProfile = async (req, res) => {
 // Update Profile + Upload Document
 exports.updateProfile = async (req, res) => {
   try {
+    // 1. Get logged-in user (student)
     const student = await getStudentByUserId(req.user.id);
-    if (!student) return res.status(404).json({ status: "error", message: "Profil étudiant non trouvé" });
 
-    const { firstName, lastName, level, phone } = req.body;
-    student.firstName = firstName;
-    student.lastName = lastName;
-    student.level = level;
-    student.phone = phone;
-    await student.save();
-
-    // Handle uploaded document
-    if (req.file) {
-      await Document.create({
-        studentId: student.id,
-        name: req.body.documentName || "Document",
-        filePath: `/uploads/${req.file.filename}`,
-        originalName: req.file.originalname,
-        fileSize: req.file.size
+    if (!student) {
+      return res.status(404).json({
+        status: "error",
+        message: "Profil étudiant non trouvé"
       });
     }
 
-    res.status(200).json({ status: "success", data: { student } });
+    // 2. Update basic fields
+    const { phone } = req.body;
+
+    if (phone) student.phone = phone;
+
+    await student.save();
+
+    // 3. If a file was uploaded, store it
+    let uploadedDocument = null;
+
+    if (req.file) {
+      uploadedDocument = await Document.create({
+        studentId: student.id,
+        name: req.body.documentName || "Document",
+        fileUrl: `/uploads/${req.file.filename}`,   
+        originalName: req.file.originalname,
+        fileSize: req.file.size
+      });
+      
+    }
+
+    // 4. Response
+    res.status(200).json({
+      status: "success",
+      message: "Profil mis à jour avec succès",
+      data: {
+        student,
+        document: uploadedDocument
+      }
+    });
+
   } catch (error) {
-    console.error("Update profile error:", error);
-    res.status(500).json({ status: "error", message: "Erreur lors de la mise à jour du profil" });
+    console.error("doctor dashboard error:", error);
+    res.status(500).json({ success: false, error: error.message });
   }
 };
 
@@ -94,7 +146,7 @@ exports.updateProfile = async (req, res) => {
 exports.getInternships = async (req, res) => {
   try {
     const { departmentId, establishmentId, search, page = 1, limit = 10 } = req.query;
-    const filter = { isActive: true, isPublished: true, startDate: { [Op.gte]: new Date() } };
+    const filter = { status: 'actif',  startDate: { [Op.gte]: new Date() } };
 
     if (departmentId) filter.departmentId = departmentId;
     if (establishmentId) filter.establishmentId = establishmentId;
@@ -107,12 +159,17 @@ exports.getInternships = async (req, res) => {
 
     const internships = await Internship.findAll({
       where: filter,
-      include: [Department, Establishment, ServiceChief],
+      include: [
+        { model: Department, as: "department" },
+        { model: Establishment, as: "establishment" },
+        { model: User, as: "creator" } // correct alias
+      ],
       order: [["createdAt", "DESC"]],
       limit: parseInt(limit),
       offset: (page - 1) * limit,
     });
-
+    
+    
     const total = await Internship.count({ where: filter });
 
     res.status(200).json({
@@ -123,47 +180,67 @@ exports.getInternships = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Internships error:", error);
-    res.status(500).json({ status: "error", message: "Erreur lors du chargement des stages" });
+    console.error("doctor dashboard error:", error);
+    res.status(500).json({ success: false, error: error.message });
   }
 };
 
 exports.getInternshipDetails = async (req, res) => {
   try {
     const internship = await Internship.findByPk(req.params.id, {
-      include: [Department, Establishment, ServiceChief],
+      include: [
+        { model: Department, as: "department" },
+        { model: Establishment, as: "establishment" },
+        { model: User, as: "creator" }, // the user who created the internship
+      ],
     });
 
-    if (!internship) return res.status(404).json({ status: "error", message: "Stage non trouvé" });
+    if (!internship) 
+      return res.status(404).json({ status: "error", message: "Stage non trouvé" });
 
     const student = await getStudentByUserId(req.user.id);
+    if (!student)
+      return res.status(404).json({ status: "error", message: "Profil étudiant non trouvé" });
+
     const existingApplication = await Application.findOne({
       where: { studentId: student.id, internshipId: internship.id },
     });
 
-    res.status(200).json({ status: "success", data: { internship, hasApplied: !!existingApplication } });
+    res.status(200).json({ 
+      status: "success", 
+      data: { internship, hasApplied: !!existingApplication } 
+    });
   } catch (error) {
     console.error("Internship details error:", error);
     res.status(500).json({ status: "error", message: "Erreur lors du chargement du stage" });
   }
 };
 
+
 exports.applyToInternship = async (req, res) => {
   try {
     const student = await getStudentByUserId(req.user.id);
+    if (!student) 
+      return res.status(404).json({ status: "error", message: "Profil étudiant non trouvé" });
+
     const { id } = req.params;
 
-    if (!student.profileCompleted) return res.status(400).json({ status: "error", message: "Veuillez compléter votre profil avant de postuler" });
-
-    const existingApplication = await Application.findOne({ where: { studentId: student.id, internshipId: id } });
-    if (existingApplication) return res.status(400).json({ status: "error", message: "Vous avez déjà postulé à ce stage" });
-
     const internship = await Internship.findByPk(id);
-    if (!internship || !internship.isActive || internship.availablePlaces <= 0) {
+    if (!internship || !internship.status == 'actif' || internship.filledPlaces >= internship.totalPlaces) {
       return res.status(400).json({ status: "error", message: "Ce stage n'est plus disponible" });
     }
 
-    const application = await Application.create({ studentId: student.id, internshipId: id, status: "pending" });
+    const existingApplication = await Application.findOne({ 
+      where: { studentId: student.id, internshipId: id } 
+    });
+    if (existingApplication) 
+      return res.status(400).json({ status: "error", message: "Vous avez déjà postulé à ce stage" });
+
+    const application = await Application.create({ 
+      studentId: student.id, 
+      internshipId: id, 
+      status: "en_attente" // match enum in Application model
+    });
 
     res.status(201).json({ status: "success", data: { application } });
   } catch (error) {
@@ -172,17 +249,20 @@ exports.applyToInternship = async (req, res) => {
   }
 };
 
+
 exports.getApplications = async (req, res) => {
   try {
     const student = await getStudentByUserId(req.user.id);
+    if (!student) return res.status(404).json({ status: "error", message: "Profil étudiant non trouvé" });
+
     const { status, page = 1, limit = 10 } = req.query;
 
     const filter = { studentId: student.id };
-    if (status) filter.status = status;
+    if (status) filter.status = status; // make sure status matches enum
 
     const applications = await Application.findAll({
       where: filter,
-      include: [Internship, { model: User, as: "processedBy" }],
+      include: [{ model: Internship, as: "internship" }],
       order: [["appliedDate", "DESC"]],
       limit: parseInt(limit),
       offset: (page - 1) * limit,
@@ -190,7 +270,13 @@ exports.getApplications = async (req, res) => {
 
     const total = await Application.count({ where: filter });
 
-    res.status(200).json({ status: "success", data: { applications, pagination: { current: parseInt(page), pages: Math.ceil(total / limit), total } } });
+    res.status(200).json({ 
+      status: "success", 
+      data: { 
+        applications, 
+        pagination: { current: parseInt(page), pages: Math.ceil(total / limit), total } 
+      } 
+    });
   } catch (error) {
     console.error("Applications error:", error);
     res.status(500).json({ status: "error", message: "Erreur lors du chargement des candidatures" });
@@ -200,12 +286,17 @@ exports.getApplications = async (req, res) => {
 exports.cancelApplication = async (req, res) => {
   try {
     const student = await getStudentByUserId(req.user.id);
+    if (!student) return res.status(404).json({ status: "error", message: "Profil étudiant non trouvé" });
+
     const { id } = req.params;
 
-    const application = await Application.findOne({ where: { id, studentId: student.id, status: "pending" } });
-    if (!application) return res.status(404).json({ status: "error", message: "Candidature non trouvée ou ne peut pas être annulée" });
+    const application = await Application.findOne({ 
+      where: { id, studentId: student.id, status: "en_attente" } 
+    });
+    if (!application) 
+      return res.status(404).json({ status: "error", message: "Candidature non trouvée ou ne peut pas être annulée" });
 
-    application.status = "cancelled";
+    application.status = "annulee"; // match enum
     await application.save();
 
     res.status(200).json({ status: "success", message: "Candidature annulée avec succès" });
@@ -218,11 +309,15 @@ exports.cancelApplication = async (req, res) => {
 exports.getEvaluations = async (req, res) => {
   try {
     const student = await getStudentByUserId(req.user.id);
+    if (!student) return res.status(404).json({ status: "error", message: "Profil étudiant non trouvé" });
 
     const evaluations = await Evaluation.findAll({
       where: { studentId: student.id },
-      include: [Internship, { model: User, as: "doctor" }, { model: User, as: "chief" }],
-      order: [["submittedAt", "DESC"]],
+      include: [
+        { model: Internship, as: "internship" },
+        { model: User, as: "doctor" } // only doctor exists in associations
+      ],
+      order: [["submissionDate", "DESC"]],
     });
 
     res.status(200).json({ status: "success", data: { evaluations } });

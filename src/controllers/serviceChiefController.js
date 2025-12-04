@@ -203,7 +203,7 @@ exports.getDashboard = async (req, res) => {
         {
           model: Internship,
           as: "internship", // ✅ specify the alias
-          where: { createdBy: chief.id },
+          where: { chiefId: chief.id },
         },
       ],
     });
@@ -296,7 +296,7 @@ exports.validateEvaluation = async (req, res) => {
     const { chiefComments } = req.body;
 
     // Find the evaluation that is "soumise"
-    const evaluation = await Evaluation.findOne({ where: { id, status: "soumise" } });
+    const evaluation = await Evaluation.findOne({ where: { id} });
 
     if (!evaluation) {
       return res.status(404).json({ success: false, error: "Évaluation non trouvée" });
