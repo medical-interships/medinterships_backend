@@ -197,6 +197,14 @@ const Internship = sequelize.define("Internship", {
     type: DataTypes.UUID,
     allowNull: false,
     references: {
+      model: 'Dean',
+      key: 'id'
+    }
+  },
+  chiefId: {
+    type: DataTypes.UUID,
+    allowNull: true,
+    references: {
       model: 'Users',
       key: 'id'
     }
@@ -463,6 +471,8 @@ Department.belongsTo(Establishment, { foreignKey: "establishmentId", as: "establ
 Establishment.hasMany(Internship, { foreignKey: "establishmentId", as: "internships" });
 Internship.belongsTo(Establishment, { foreignKey: "establishmentId", as: "establishment" });
 
+
+
 Department.hasMany(Internship, { foreignKey: "departmentId", as: "internships" });
 Internship.belongsTo(Department, { foreignKey: "departmentId", as: "department" });
 
@@ -500,6 +510,9 @@ User.hasOne(Admin, { foreignKey: "userId", as: "adminProfile" });
 
 Dean.belongsTo(User, { foreignKey: "userId", as: "user" });
 User.hasOne(Dean, { foreignKey: "userId", as: "deanProfile" });
+
+Dean.hasMany(Internship, { foreignKey: "createdBy", as: "createdInternships" });
+Internship.belongsTo(Dean, { foreignKey: "createdBy", as: "creatorDean" });
 
 // Compare password with hashed password
 User.prototype.correctPassword = async function (candidatePassword) {

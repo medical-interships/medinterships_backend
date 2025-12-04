@@ -13,7 +13,7 @@ router.get('/dashboard', serviceChiefController.getDashboard);
 // Internships
 router.route('/internships')
   .get(serviceChiefController.getInternships)
-  .post(serviceChiefController.storeInternship);
+
 
 // Applications
 router.get('/applications', serviceChiefController.getApplications);

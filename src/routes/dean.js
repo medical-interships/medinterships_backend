@@ -26,7 +26,9 @@ router.route('/establishments')
 router.route('/services')
   .get(deanController.getServices)
   .post(deanController.createService);
-
+router.route('/interships')
+  .post(deanController.storeInternship);
+  
 // Statistics and Reports
 router.get('/statistics', deanController.getStatistics);
 router.get('/reports/export', deanController.exportReport);

@@ -125,78 +125,7 @@ exports.getDashboard = async (req, res) => {
     }
     };
 
-exports.createInternship = async (req, res) => {
-  try {
-    const chief = await User.findOne({ where: { id: req.user.id } });
 
-    const departments = await Department.findAll({ where: { isActive: true } });
-    const establishments = await Establishment.findAll({ where: { isActive: true } });
-
-    res.render("service-chief/create-internship", {
-      departments,
-      establishments,
-      chief,
-      title: "Créer un Stage",
-    });
-  } catch (error) {
-    console.error("Create internship form error:", error);
-    res.status(500).render("error", {
-      error: "Erreur lors du chargement du formulaire",
-      user: req.user,
-    });
-  }
-};
-
-exports.storeInternship = async (req, res) => {
-  try {
-  // Get the logged-in service chief
-  const chief = await User.findOne({ where: { id: req.user.id } });
-  if (!chief) {
-  return res.status(404).json({ error: "Chef de service non trouvé" });
-  }
-  
-  const {
-    title,
-    description,
-    departmentId,
-    establishmentId,
-    duration,
-    startDate,
-    endDate,
-    totalPlaces,
-    requirements
-  } = req.body;
-  
-  const newInternship = await Internship.create({
-    title,
-    description,
-    departmentId,
-    establishmentId,
-    chiefId: chief.id,
-    createdBy: chief.id,   // <-- add this line
-    duration,
-    startDate,
-    endDate,
-    totalPlaces: parseInt(totalPlaces),
-    filledPlaces: 0,
-    requirements: requirements
-      ? JSON.stringify(requirements.split(",").map(r => r.trim()))
-      : null,
-    status: "actif",
-  });
-  
-  
-  return res.json({
-    success: true,
-    message: "Stage créé avec succès",
-    internship: newInternship,
-  });
-  
-  } catch (error) {
-    console.error("Submit evaluation error:", error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-  };
   exports.getApplications = async (req, res) => {
     try {
       const chief = await User.findOne({ where: { id: req.user.id } });
@@ -326,7 +255,7 @@ exports.getEvaluations = async (req, res) => {
 
     // Internships supervised by this chief
     const internships = await Internship.findAll({
-      where: { createdBy: chief.id },
+      where: { chiefId: chief.id },
     });
     const internshipIds = internships.map(i => i.id);
 

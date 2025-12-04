@@ -9,7 +9,8 @@ const {
   Application,
   Evaluation,
   Document,
-  Admin
+  Admin,
+  Dean
 } = require("../models/models");
 
 async function deleteAll() {
@@ -19,7 +20,7 @@ async function deleteAll() {
     console.log("✅ Database connected");
 
     console.log("🗑️ Deleting ALL data from all tables...");
-
+    await Dean.destroy({where : {}});
     await Application.destroy({ where: {} });
     await Evaluation.destroy({ where: {} });
     await Document.destroy({ where: {} });
@@ -28,6 +29,7 @@ async function deleteAll() {
     await Establishment.destroy({ where: {} });
     await Admin.destroy({ where: {} });
     await User.destroy({ where: {} });
+    
 
     console.log("🧹 All tables cleared successfully!");
     process.exit(0);

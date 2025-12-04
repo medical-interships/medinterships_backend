@@ -1,4 +1,4 @@
-const { Dean,Department, User, Student, Doctor, ServiceChief, Establishment, Service, Internship, Application } = require('../models/models');
+const { Dean,Department, User, Establishment, Internship, Application } = require('../models/models');
 const { Op, fn, col, literal } = require('sequelize');
 
 exports.getDashboard = async (req, res) => {
@@ -118,31 +118,45 @@ exports.createUserForm = async (req, res) => {
 
 exports.createUser = async (req, res) => {
   try {
-    const { role, matricule, firstName, lastName, level, phone, specialty, licenseNumber, service, establishment } = req.body;
-
-    const user = await User.create({
+    const { email , role,  firstName, lastName, level, phone, specialty, licenseNumber, service, establishment } = req.body;
+    let user;
+    if ( role != 'student') {
+      user = await User.create({
       email: req.body.email,
       password: req.body.password, // or hashedPassword if you hash it before
       role,
       firstName: req.body.firstName,
       lastName: req.body.lastName,
       phone: req.body.phone || null
-    });
-    
+    });}
 
     switch (role) {
       case 'student': {
-        const upperMatricule = matricule.toUpperCase();
-        const existingStudent = await User.findOne({ where: { matricule: upperMatricule, role: 'student' } });
-
+        const upperEmail = email.toUpperCase();
+        console.log(upperEmail);
+        const existingStudent = await User.findOne({ where: {email: upperEmail } });
+      
         if (existingStudent) {
           await user.destroy();
-          return res.status(400).json({ status: 'error', message: 'Un étudiant avec ce matricule existe déjà' });
+          return res.status(400).json({ status: 'error', message: 'Un étudiant avec cet email existe déjà' });
+        }else{
+          user = await User.create({
+            email: req.body.email,
+            password: req.body.password, 
+            role: req.body.role,
+            level: req.body.level,
+            specialty: req.body.specialty,
+            firstName: req.body.firstName,
+            lastName: req.body.lastName,
+            phone: req.body.phone || null
+          });
+          console.log('wash zin')
         }
-
-        await user.update({ firstName, lastName, phone, matricule: upperMatricule, level });
+      
+        await user.update({ firstName, lastName, phone, email: req.body.email, level });
         break;
       }
+      
 
       case 'doctor':
         await user.update({ firstName, lastName, phone, specialty, licenseNumber, departmentId: service, establishmentId: establishment });
@@ -307,7 +321,59 @@ exports.createService = async (req, res) => {
     });
   }
 };
-// Statistics & Reports
+// create and store internship
+exports.storeInternship = async (req, res) => {
+  try {
+  // Get the logged-in service chief
+  const dean = await User.findOne({ where: { id: req.user.id } });
+  if (!dean) {
+  return res.status(404).json({ error: "Chef de service non trouvé" });
+  }
+  const {
+    title,
+    description,
+    departmentId,
+    establishmentId,
+    chiefId,
+    createdBy,  
+    duration,
+    startDate,
+    endDate,
+    totalPlaces,
+    requirements
+  } = req.body;
+
+
+  const newInternship = await Internship.create({
+    title,
+    description,
+    departmentId,
+    establishmentId,
+    chiefId,
+    createdBy,   
+    duration,
+    startDate,
+    endDate,
+    totalPlaces: parseInt(totalPlaces),
+    filledPlaces: 0,
+    requirements: requirements
+      ? JSON.stringify(requirements.split(",").map(r => r.trim()))
+      : null,
+    status: "actif",
+  });
+  
+  return res.json({
+    success: true,
+    message: "Stage créé avec succès",
+    internship: newInternship,
+  });
+  
+  } catch (error) {
+    console.error("Submit evaluation error:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+  };
+
 exports.getStatistics = async (req, res) => {
   try {
     const byLevel = await User.findAll( {where : {role : "student"}} , {
