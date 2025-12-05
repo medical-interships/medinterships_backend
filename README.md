@@ -11,7 +11,7 @@ check list:
 -----------
 
 
-1.make the documents downlaoder and make it compatible with pdfs and store it in a separate folder or what ever you know that is effective and works(only needs to retrieve the right data for the right place the downloading part works). 
+1.make the documents downlaoder and make it compatible with pdfs and store it in a separate folder or what ever you know that is effective and works(only needs to retrieve the right data for the right place the downloading part works ) so just retrieve with the student id in it and for what goes where just take the last bit of the url and make it go by that logic (.ong is profile photo and pdf is for cv). 
 
 2.make notification socket (notifications are affected by the admin and chief of service).
 
