@@ -8,12 +8,12 @@ console.log("🔹 Connecting to database...");
 await sequelize.authenticate();
 console.log("✅ Database connected");
 
-/*
+
 const Admin = User.create({ "email": "admin@gmail.com", "password": "admin123", "role": "dean", "firstName": "Admin", "lastName": "User" });
 await Admin;
 console.log("👑 Admin user created.");
 console.log("🎉 Seeding complete!"); 
-
+/*
 console.log("creating students");
 const student = User.create({ "email": "student2@gmail.com", "password": "student123", "role": "student", "firstName": "Student2", "lastName": "User2" });
 await student;
@@ -62,7 +62,7 @@ async function seedDean() {
 
  // Sync database (ONLY alter, NOT force)
 
-
+/*
  console.log("Creating Establishments...");
  // --- Create Establishments ---
  const est1 = await Establishment.create({
@@ -124,7 +124,7 @@ async function seedDean() {
      availablePlaces: 10,
    }
  ]);
-
+*/
  console.log("Departments created successfully!");
 
  process.exit();

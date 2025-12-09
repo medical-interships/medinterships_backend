@@ -37,6 +37,8 @@
         "multer": "^2.0.2",
         "mysql2": "^3.11.0",
         "sequelize": "^6.37.3",
+        "socket.io": "^4.8.1",
+        "socket.io-client": "^4.8.1",
         "swagger-jsdoc": "^6.2.8",
         "swagger-ui-express": "^5.0.1",
         "xss-clean": "^0.1.4"

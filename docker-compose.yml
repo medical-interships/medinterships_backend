@@ -14,8 +14,8 @@ services:
       DB_USER: root
       DB_PASS: Itachi12
       JWT_SECRET: supersecret123
-    volumes:
-      - ./.env:/src/.env   # <-- Mount the .env file here
+      JWT_EXPIRES_IN: 7d
+      NODE_ENV: production
     depends_on:
       - mysql
     networks:
