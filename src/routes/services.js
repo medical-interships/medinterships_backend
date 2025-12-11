@@ -1,11 +1,8 @@
 const express = require('express');
 const router = express.Router();
+const servicesController = require('../controllers/servicescontroller');
 
-const {
-  getPublicServices
-} = require('../controllers/servicescontroller');
 
-// ✅ Public services list
-router.get('/', getPublicServices);
+router.get('/', servicesController.getPublicServices);
 
 module.exports = router;

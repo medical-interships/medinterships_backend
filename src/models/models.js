@@ -7,10 +7,16 @@ const User = sequelize.define("User", {
     defaultValue: DataTypes.UUIDV4,
     primaryKey: true,
   },
+  matricule: { 
+     type: DataTypes.STRING, 
+     unique: true, 
+     allowNull: true 
+    }
+  ,
   email: { 
     type: DataTypes.STRING, 
     unique: true, 
-    allowNull: false,
+    allowNull: true,
     validate: { isEmail: true }
   },
   password: { type: DataTypes.STRING, allowNull: false },
@@ -404,7 +410,7 @@ const Notification = sequelize.define("Notification", {
 });
 
 
-
+const studenthistory = sequelize.define("History",{})
 
 
 ////////////////////////////////////////

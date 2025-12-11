@@ -1,17 +1,16 @@
 const { Establishment } = require('../models/models');
 
 // ✅ Get public establishments list
+
+
 exports.getPublicEstablishments = async (req, res) => {
   try {
-    const establishments = await Establishment.find({ isActive: true })
-      .populate('services')
-      .sort({ name: 1 });
+    const establishments = await Establishment.findAll();
 
     res.status(200).json({
       status: 'success',
-      data: { establishments }
+      data: establishments
     });
-
   } catch (error) {
     console.error('Establishments API error:', error);
     res.status(500).json({

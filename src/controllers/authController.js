@@ -60,25 +60,22 @@ exports.login = async (req, res) => {
   try {
     const { email, password, matricule } = req.body;
 
-    // Student login
+    
     if (matricule) {
-      const student = await Student.findOne({
-        where: { matricule: matricule.toUpperCase() },
-        include: User
-      });
-
-      if (!student || !student.User || !(await student.User.correctPassword(password))) {
+      console.log("Student login with matricule:", matricule);
+      const student = await User.findOne({ where: { matricule } });
+      if (!student || !(await student.correctPassword(password))) {
         return res.status(401).json({ status: 'error', message: 'Matricule ou mot de passe incorrect' });
       }
-
-      if (!student.User.isActive) {
+      
+      if (!student.isActive) {
         return res.status(401).json({ status: 'error', message: 'Compte désactivé' });
       }
-
-      await student.User.updateLastLogin();
-      createSendToken(student.User, 200, res);
+      
+      await student.updateLastLogin();
+      createSendToken(student, 200, res);
       return;
-    }
+    }      
 
     // Other users login
     const user = await User.findOne({ where: { email: email.toLowerCase() } });
@@ -94,8 +91,11 @@ exports.login = async (req, res) => {
     createSendToken(user, 200, res);
 
   } catch (err) {
-    console.error('Login error:', err);
-    res.status(500).json({ status: 'error', message: 'Erreur de connexion' });
+    console.error("Students error:", err);
+    return res.status(500).json({
+      success: false,
+      error: err.message
+    });
   }
 };
 

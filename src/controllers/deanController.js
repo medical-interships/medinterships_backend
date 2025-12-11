@@ -1,4 +1,4 @@
-const { Dean, Department, User, Establishment, Internship, Application } = require("../models/models")
+const { Dean, Department, User, Establishment, Internship, Application , Evaluation , Document , Notification} = require("../models/models")
 const { Op, fn, col, literal } = require("sequelize")
 const NotificationService = require("../service/notificationService")
 const { socketEvents } = require("../socket/events")
@@ -121,32 +121,32 @@ exports.createUserForm = async (req, res) => {
 
 exports.createUser = async (req, res) => {
   try {
-    const { email, role, firstName, lastName, level, phone, specialty, licenseNumber, service, establishment } =
+    const { email, role, firstName, lastName, level, phone, specialty, licenseNumber, service, establishment ,matricule} =
       req.body
     let user
     if (role !== "student") {
       user = await User.create({
-        email: req.body.email,
-        password: req.body.password, // or hashedPassword if you hash it before
-        role,
-        firstName: req.body.firstName,
-        lastName: req.body.lastName,
-        phone: req.body.phone || null,
+          email: req.body.email,
+          password: req.body.password, // or hashedPassword if you hash it before
+          role,
+          firstName: req.body.firstName,
+          lastName: req.body.lastName,
+          phone: req.body.phone || null
       })
     }
 
     switch (role) {
       case "student": {
-        const upperEmail = email.toUpperCase()
-        console.log(upperEmail)
-        const existingStudent = await User.findOne({ where: { email: upperEmail } })
+        const matriculeunique = req.body.matricule
+        console.log(matriculeunique)
+        const existingStudent = await User.findOne({ where: { matricule: matriculeunique } })
 
         if (existingStudent) {
-          await user.destroy()
+        
           return res.status(400).json({ status: "error", message: "Un étudiant avec cet email existe déjà" })
         } else {
           user = await User.create({
-            email: req.body.email,
+            matricule: req.body.matricule,
             password: req.body.password,
             role: req.body.role,
             level: req.body.level,
@@ -157,31 +157,8 @@ exports.createUser = async (req, res) => {
           })
           console.log("wash zin")
         }
-
-        await user.update({ firstName, lastName, phone, email: req.body.email, level })
         break
       }
-
-      case "doctor":
-        await user.update({
-          firstName,
-          lastName,
-          phone,
-          specialty,
-          licenseNumber,
-          departmentId: service,
-          establishmentId: establishment,
-        })
-        break
-
-      case "service_chief":
-        await user.update({ firstName, lastName, phone, departmentId: service, establishmentId: establishment })
-        break
-
-      case "dean":
-        await user.update({ firstName, lastName, phone })
-        await Dean.create({ userId: user.id, firstName, lastName, phone })
-        break
 
       default:
         throw new Error("Role non reconnu")
@@ -193,6 +170,34 @@ exports.createUser = async (req, res) => {
     return res.status(500).json({ status: "error", message: "Erreur interne du serveur", error: error.message })
   }
 }
+exports.deleteUser = async (req, res) => {
+  try {
+    const user = await User.findByPk(req.params.id);
+    if (!user) return res.status(404).json({ success: false, error: "Utilisateur non trouvé" });
+
+    // 1️⃣ Nullify references where needed to avoid FK errors
+    await Department.update({ chiefId: null }, { where: { chiefId: user.id } });
+
+
+// 2️⃣ Delete dependent records
+    await Application.destroy({ where: { studentId: user.id } });
+    await Evaluation.destroy({ where: { studentId: user.id } });
+    await Evaluation.destroy({ where: { doctorId: user.id } });
+    await Document.destroy({ where: { studentId: user.id } });
+    await Notification.destroy({ where: { userId: user.id } });
+
+
+// 3️⃣ Finally, delete the user
+    await user.destroy();
+
+
+    res.json({ success: true, message: "Utilisateur et toutes ses données associées supprimés avec succès" });
+
+  } catch (error) {
+    console.error("Delete user error:", error);
+    res.status(500).json({ success: false,  error: error.message, });
+  }
+};
 
 exports.toggleUserStatus = async (req, res) => {
   try {
@@ -213,6 +218,54 @@ exports.toggleUserStatus = async (req, res) => {
   }
 }
 
+exports.modifyUser = async (req, res) => {
+  try {
+    const { id } = req.params
+    const { firstName, lastName, phone, email, level , establishmentId , departmentId ,specialty} = req.body
+
+    const user = await User.findByPk(id)
+    if (!user) {
+      return res.status(404).json({ success: false, error: "Utilisateur non trouvé" })
+    }
+    if (user.role === "student") {
+    user.firstName = firstName || user.firstName
+    user.lastName = lastName || user.lastName
+    user.phone = phone || user.phone
+    user.email = email || user.email
+    user.specialty = specialty  || user.specialty
+    user.level = level || user.level
+    }else if (user.role === "doctor") {
+      user.firstName = firstName || user.firstName
+      user.lastName = lastName || user.lastName
+      user.phone = phone || user.phone
+      user.email = email || user.email
+      if (establishmentId) user.establishmentId = establishmentId;
+      if (departmentId) user.departmentId = departmentId;
+      
+    }else if (user.role === "service_chief") {
+      user.firstName = firstName || user.firstName
+      user.lastName = lastName || user.lastName
+      user.phone = phone || user.phone
+      user.email = email || user.email
+      if (establishmentId) user.establishmentId = establishmentId;
+      if (departmentId) user.departmentId = departmentId;
+      
+    }
+    await user.save()
+
+    res.status(200).json({
+      success: true,
+      message: "Utilisateur mis à jour avec succès",
+      data: user,
+    })
+  } catch (error) {
+    console.error("Modify user error:", error)
+    res.status(500).json({
+      success: false,     
+      error: "Erreur lors de la mise à jour de l'utilisateur",
+    })
+  }
+}
 // Establishments Management
 exports.getEstablishments = async (req, res) => {
   try {
@@ -262,6 +315,62 @@ exports.createEstablishment = async (req, res) => {
     })
   }
 }
+exports.modifyEstablishment = async (req, res) => {
+  try {
+    const { id } = req.params
+    const { name, address, city, phone, email, type, isActive } = req.body
+
+    const establishment = await Establishment.findByPk(id)
+    if (!establishment) {
+      return res.status(404).json({ success: false, error: "Établissement non trouvé" })
+    }
+
+    establishment.name = name || establishment.name
+    establishment.address = address || establishment.address
+    establishment.city = city || establishment.city
+    establishment.phone = phone || establishment.phone
+    establishment.email = email || establishment.email
+    establishment.type = type || establishment.type
+    if (isActive !== undefined) establishment.isActive = isActive
+
+    await establishment.save()
+
+    res.status(200).json({
+      success: true,
+      message: "Établissement mis à jour avec succès",
+      data: establishment,
+    })
+  } catch (error) {
+    console.error("Modify establishment error:", error)
+    res.status(500).json({
+      success: false,
+      error: "Erreur lors de la mise à jour de l'établissement",
+    })
+  }
+}
+exports.deleteestablishments = async (req, res) =>{
+  try{
+    const { id } = req.params;
+    const establishment = await Establishment.findByPk(id);
+    if(!establishment){
+      return res.status(404).json({ success: false, error: "etablisment non trouvé" })
+    }
+    await Internship.destroy({where: {establishmentId : id}});
+    await User.destroy({where : { establishmentId : id}});
+    await Department.destroy({ where: {establishmentId : id}});
+    res.status(200).json({
+      success: true,
+      message: "service supprimé avec succès",
+    });
+  } catch (error) {
+    console.error("Delete service error:", error);
+    res.status(500).json({
+      success: false,
+      error: "Erreur lors de la suppression du service",
+    });
+  }
+}
+
 
 // Services Management
 exports.getServices = async (req, res) => {
@@ -330,7 +439,86 @@ exports.createService = async (req, res) => {
     })
   }
 }
+exports.modifyservice = async (req, res) => {
+  try {
+    const { id } = req.params
+    const { name, description, establishmentId, chiefId, totalPlaces, availablePlaces, isActive } = req.body
 
+    const department = await Department.findByPk(id)
+    if (!department) {
+      return res.status(404).json({ success: false, error: "Département non trouvé" })
+    }
+
+    department.name = name || department.name
+    department.description = description ||  department.description
+    department.establishmentId = establishmentId || department.establishmentId
+    department.chiefId = chiefId || department.chiefId
+    department.totalPlaces = totalPlaces || department.totalPlaces
+    department.availablePlaces = availablePlaces || department.availablePlaces
+    if (isActive !== undefined) department.isActive = isActive
+
+    await department.save()
+
+    res.status(200).json({
+      success: true,
+      message: "Département mis à jour avec succès",
+      data: department,
+    })
+  } catch (error) {
+    console.error("Modify department error:", error)
+    res.status(500).json({
+      success: false,
+      error: "Erreur lors de la mise à jour du département",
+    })
+  } 
+}
+exports.deleteservice = async (req, res) =>{
+  try{
+    const { id } = req.params;
+
+    const service = await Department.findByPk(id);
+    if(!service){
+      return res.status(404).json({ success: false, error: "service non trouvé" });
+    }
+    await Internship.destroy({where: { departmentId: id }});
+    await service.destroy();
+
+      res.status(200).json({
+      success: true,
+      message: "service supprimé avec succès",
+    });
+  } catch (error) {
+    console.error("Delete service error:", error);
+    res.status(500).json({
+      success: false,
+      error: "Erreur lors de la suppression du service",
+    });
+  }
+}
+exports.deleteintership = async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const internship = await Internship.findByPk(id);
+    if (!internship) {
+      return res.status(404).json({ success: false, error: "Stage non trouvé" });
+    }
+    await Application.destroy({ where: { internshipId: id } });
+    await Evaluation.destroy({ where: { internshipId: id } });
+    await internship.destroy();
+
+    res.status(200).json({
+      success: true,
+      message: "Stage supprimé avec succès",
+    });
+  } catch (error) {
+    console.error("Delete internship error:", error);
+    res.status(500).json({
+      success: false,
+      error: "Erreur lors de la suppression du stage",
+    });
+  }
+}
 // Create and store internship
 exports.storeInternship = async (req, res) => {
   try {
@@ -396,7 +584,59 @@ exports.storeInternship = async (req, res) => {
     res.status(500).json({ success: false, error: error.message })
   }
 }
+exports.modifyInternship = async (req, res) => {
+  try {
+    const { id } = req.params
+    const {
+      title,
+      description,
+      departmentId,
+      establishmentId,
+      chiefId,
+      duration,
+      startDate,
+      endDate,
+      totalPlaces,
+      requirements,
+      status,
+    } = req.body
 
+    const internship = await Internship.findByPk(id)
+    if (!internship) {
+      return res.status(404).json({ success: false, error: "Stage non trouvé" })
+    }
+
+    internship.title = title || internship.title
+    internship.description = description || internship.description
+    internship.departmentId = departmentId || internship.departmentId
+    internship.establishmentId = establishmentId || internship.establishmentId
+    internship.chiefId = chiefId || internship.chiefId
+    internship.duration = duration || internship.duration
+    internship.startDate = startDate || internship.startDate
+    internship.endDate = endDate || internship.endDate
+    internship.totalPlaces = totalPlaces  
+      ? Number.parseInt(totalPlaces)
+      : internship.totalPlaces
+    internship.requirements = requirements
+      ? JSON.stringify(requirements.split(",").map((r) => r.trim()))
+      : internship.requirements
+    internship.status = status || internship.status
+
+    await internship.save()
+
+    res.status(200).json({
+      success: true,
+      message: "Stage mis à jour avec succès",
+      data: internship,
+    })
+  } catch (error) {
+    console.error("Modify internship error:", error)
+    res.status(500).json({
+      success: false,
+      error: "Erreur lors de la mise à jour du stage",
+    })
+  }
+}
 exports.getStatistics = async (req, res) => {
   try {
     const byLevel = await User.findAll(

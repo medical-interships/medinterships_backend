@@ -3,13 +3,11 @@ const { Department } = require('../models/models');
 // ✅ Get public services list
 exports.getPublicServices = async (req, res) => {
   try {
-    const services = await Service.find({ isActive: true })
-      .populate('establishment')
-      .sort({ name: 1 });
+    const services = await Department.findAll();
 
     res.status(200).json({
       status: 'success',
-      data: { Department }
+      data: services
     });
 
   } catch (error) {

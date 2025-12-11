@@ -1,7 +1,6 @@
 const { Op } = require("sequelize");
 const {
   User,
-  Student,
   Internship,
   Application,
   Evaluation,
